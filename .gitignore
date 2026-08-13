@@ -1,0 +1,4 @@
+env-wind-turbine-pipeline/
+__pycache__/
+*.pyc
+.pytest_cache/

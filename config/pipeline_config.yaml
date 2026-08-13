@@ -1,0 +1,4 @@
+data_files:
+  - data/data_group_1.csv
+  - data/data_group_2.csv
+  - data/data_group_3.csv
