@@ -24,28 +24,15 @@ Calculates min/max/avg power per turbine, per day
 Flags anomalies — a turbine is anomalous if its daily average is 2+ std devs from what the other 14 turbines averaged that day
 Writes everything to SQLite — 4 tables: cleaned_readings, quality_errors, daily_stats, anomalies
 Current solution diagram
-data_group_*.csv (3 files)
-  → read_group_file() → one Spark DataFrame
-  → flag_quality_issues() → tags every row good/bad
-                                    |
-                    +---------------+---------------+
-                    v                                v
-         split_errors()                    impute_bad_values()
-         (bad rows, ORIGINAL                (bad rows forward-filled,
-          value preserved)                   good rows untouched)
-                    |                                |
-                    v                                v
-         quality_errors table          calculate_daily_stats()
-         (SQLite - audit trail)                      |
-                                                       v
-                                            detect_anomalies()
-                                                       |
-                                        +--------------+--------------+
-                                        v                              v
-                              cleaned_readings table          daily_stats + anomalies
-                                    (SQLite)                        tables (SQLite)
+1. data_group_*.csv (3 files) -> read_group_file() -> one Spark DataFrame
+2. flag_quality_issues() tags every row good or bad
+3. BRANCH A: split_errors() -> quality_errors table (original bad value, audit trail)
+4. BRANCH B: impute_bad_values() -> forward-fills bad rows, keeps good rows as-is
+5. (continuing branch B) calculate_daily_stats() -> min/max/avg per turbine per day
+6. detect_anomalies() -> cross-turbine z-score
+7. write_to_sqlite() writes 4 tables: cleaned_readings, quality_errors, daily_stats, anomalies
 
-4 tables total: cleaned_readings, quality_errors, daily_stats, anomalies. Bad rows get written twice, in two different forms: once untouched (quality_errors, for audit), once imputed (flowing into cleaned_readings, then daily_stats and anomalies).
+Bad rows get written twice, in two different forms: once untouched (quality_errors, for audit), once imputed (flowing into cleaned_readings, then daily_stats and anomalies).
 
 Key design calls
 
@@ -88,24 +75,14 @@ Querying the output: Starburst/Trino on top of the Iceberg tables, instead of co
 Infrastructure: all of the above provisioned via Terraform, not manual setup.
 Alerting: a data quality alert if quality_errors spikes, instead of it sitting quietly in a table.
 Production solution diagram
-Turbine sensor data
-  → S3 raw-archive bucket (immutable, every file kept exactly as received,
-    partitioned by turbine_id/day - this is the backfill source, never
-    modified or deleted, so reprocessing history is always possible)
-  → S3 working bucket (same files, this is what actually triggers processing)
-      → EventBridge (fires when a new file lands in the working bucket)
-      → Lambda (thin trigger)
-      → Step Functions state machine
-          ingest -> clean -> stats -> anomalies
-          (each stage retries independently, visual pass/fail per run)
-
-  → Apache Iceberg tables (S3, partitioned turbine_id + day)
-      schema tracked in Glue Schema Registry
-      - cleaned_readings   (imputed, complete hourly grid)
-      - quality_errors     (bad rows, original value, audit trail)
-      - daily_stats        (min/max/avg per turbine per day)
-      - anomalies          (z-score flagged results)
-
-  → Starburst/Trino (query layer on top of Iceberg)
-  → CloudWatch alert if quality_errors spikes
-  (all of the above provisioned via Terraform)
+1. Turbine sensor data -> S3 raw-archive bucket (immutable, backfill source)
+2. Same files also land in S3 working bucket (triggers processing)
+3. EventBridge fires when a new file lands in the working bucket
+4. Lambda (thin trigger) starts a Step Functions execution
+5. Step Functions: ingest -> clean -> stats -> anomalies (each stage retries independently)
+6. Output written to Apache Iceberg tables on S3, partitioned by turbine_id + day
+   - cleaned_readings, quality_errors, daily_stats, anomalies
+   - schema tracked in Glue Schema Registry
+7. Starburst/Trino queries the Iceberg tables
+8. CloudWatch alerts if quality_errors spikes
+9. All infrastructure provisioned via Terraform
