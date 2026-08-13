@@ -6,7 +6,8 @@ import yaml
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    data_files: list[str]
+    data_dir: str
+    file_pattern: str
     power_output_min: float
     power_output_max: float
     wind_speed_min: float
@@ -18,7 +19,8 @@ class PipelineConfig:
         with open(path, "r") as f:
             raw = yaml.safe_load(f)
         return PipelineConfig(
-            data_files=raw["data_files"],
+            data_dir=raw["data_dir"],
+            file_pattern=raw["file_pattern"],
             power_output_min=raw["power_output_min"],
             power_output_max=raw["power_output_max"],
             wind_speed_min=raw["wind_speed_min"],

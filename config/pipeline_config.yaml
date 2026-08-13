@@ -1,7 +1,5 @@
-data_files:
-  - data/data_group_1.csv
-  - data/data_group_2.csv
-  - data/data_group_3.csv
+data_dir: data
+file_pattern: data_group_*.csv
 
 power_output_min: 0.0
 power_output_max: 10.0

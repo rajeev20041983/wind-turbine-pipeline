@@ -1,5 +1,5 @@
 from src.config import PipelineConfig
-from src.ingestion.ingest import create_spark_session, read_group_file
+from src.ingestion.ingest import create_spark_session, discover_data_files, read_group_file
 from src.processing.clean import flag_quality_issues, impute_bad_values, split_errors
 from src.processing.stats import calculate_daily_stats
 from src.processing.anomalies import detect_anomalies
@@ -12,7 +12,8 @@ def run():
     config = PipelineConfig.from_yaml("config/pipeline_config.yaml")
     spark = create_spark_session()
 
-    raw_dfs = [read_group_file(spark, path) for path in config.data_files]
+    data_files = discover_data_files(config.data_dir, config.file_pattern)
+    raw_dfs = [read_group_file(spark, path) for path in data_files]
     raw = raw_dfs[0]
     for df in raw_dfs[1:]:
         raw = raw.union(df)
@@ -27,11 +28,12 @@ def run():
     stats = calculate_daily_stats(clean)
     anomalies = detect_anomalies(stats, config.anomaly_std_dev_threshold)
 
-    write_to_sqlite(clean, DB_PATH, "cleaned_readings")
-    write_to_sqlite(errors, DB_PATH, "quality_errors")
-    write_to_sqlite(stats, DB_PATH, "daily_stats")
-    write_to_sqlite(anomalies, DB_PATH, "anomalies")
+    write_to_sqlite(clean, DB_PATH, "cleaned_readings", primary_keys=["timestamp", "turbine_id"])
+    write_to_sqlite(errors, DB_PATH, "quality_errors", primary_keys=["timestamp", "turbine_id"])
+    write_to_sqlite(stats, DB_PATH, "daily_stats", primary_keys=["turbine_id", "day"])
+    write_to_sqlite(anomalies, DB_PATH, "anomalies", primary_keys=["turbine_id", "day"])
 
+    print(f"files discovered: {len(data_files)}")
     print(f"rows in: {raw.count()}")
     print(f"missing values (null power/wind): {missing_count}")
     print(f"out-of-range values (impossible readings): {out_of_range_count}")
