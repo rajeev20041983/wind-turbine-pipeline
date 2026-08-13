@@ -2,25 +2,16 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-POWER_OUTPUT_MIN = 0.0
-POWER_OUTPUT_MAX = 10.0
-WIND_SPEED_MIN = 0.0
-WIND_SPEED_MAX = 30.0
 
-
-def flag_quality_issues(df: DataFrame) -> DataFrame:
+def flag_quality_issues(df: DataFrame, power_min: float, power_max: float, wind_min: float, wind_max: float) -> DataFrame:
     return (
         df.withColumn(
             "power_output_bad",
-            F.col("power_output").isNull()
-            | (F.col("power_output") < POWER_OUTPUT_MIN)
-            | (F.col("power_output") > POWER_OUTPUT_MAX),
+            F.col("power_output").isNull() | (F.col("power_output") < power_min) | (F.col("power_output") > power_max),
         )
         .withColumn(
             "wind_speed_bad",
-            F.col("wind_speed").isNull()
-            | (F.col("wind_speed") < WIND_SPEED_MIN)
-            | (F.col("wind_speed") > WIND_SPEED_MAX),
+            F.col("wind_speed").isNull() | (F.col("wind_speed") < wind_min) | (F.col("wind_speed") > wind_max),
         )
     )
 

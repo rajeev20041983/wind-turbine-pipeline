@@ -17,19 +17,26 @@ def run():
     for df in raw_dfs[1:]:
         raw = raw.union(df)
 
-    flagged = flag_quality_issues(raw)
+    flagged = flag_quality_issues(raw, config.power_output_min, config.power_output_max, config.wind_speed_min, config.wind_speed_max)
     errors = split_errors(flagged)
     clean = impute_bad_values(flagged)
 
+    missing_count = errors.filter(errors.power_output.isNull() | errors.wind_speed.isNull()).count()
+    out_of_range_count = errors.filter(errors.power_output.isNotNull() & errors.wind_speed.isNotNull()).count()
+
     stats = calculate_daily_stats(clean)
-    anomalies = detect_anomalies(stats)
+    anomalies = detect_anomalies(stats, config.anomaly_std_dev_threshold)
 
     write_to_sqlite(clean, DB_PATH, "cleaned_readings")
     write_to_sqlite(errors, DB_PATH, "quality_errors")
     write_to_sqlite(stats, DB_PATH, "daily_stats")
     write_to_sqlite(anomalies, DB_PATH, "anomalies")
 
-    print(f"rows in: {raw.count()}, rows flagged bad: {errors.count()}, anomalies: {anomalies.filter(anomalies.is_anomaly).count()}")
+    print(f"rows in: {raw.count()}")
+    print(f"missing values (null power/wind): {missing_count}")
+    print(f"out-of-range values (impossible readings): {out_of_range_count}")
+    print(f"total flagged, preserved in quality_errors table: {errors.count()}")
+    print(f"anomalies detected: {anomalies.filter(anomalies.is_anomaly).count()}")
 
     spark.stop()
 
